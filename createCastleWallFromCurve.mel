@@ -1,0 +1,191 @@
+// makeTower Procedure
+proc string makeTower(int $baseHeight)
+{
+	int $type = rand(0,2);
+	switch( $type ) {
+		case 0 :// FlatTower-----------------------------------------------------------------
+			// Variables
+			int $baseRadius = rand(2,6);
+			float $topRadius = $baseRadius + 0.5;
+			int $topHeight = 2;
+			// Name variables
+			string $currentObjectArray[];
+			clear $currentObjectArray;
+			string $flatBase;
+			string $flatTop;
+
+			// Create flat tower (base, top)
+			$currentObjectArray = `polyCylinder -ch 0 -r $baseRadius -h $baseHeight -name "flatBase"`;
+			$flatBase = $currentObjectArray[0];
+			$currentObjectArray = `polyPipe -ch 0 -r $topRadius -h ($topHeight*2) -sa 40 -rcp 0 -n "flatTop"`;
+			$flatTop = $currentObjectArray[0];
+			select -cl;
+			for ($i = 40; $i < 80; $i+=2) 
+			{
+				select -add flatTop.f[$i];
+			}
+			polyExtrudeFacet -constructionHistory 0 -thickness 0.75;
+			select -cl;
+			// Position parts
+			move -y (($baseHeight/2.0) + ($topHeight/2.0)) 0 0 $flatTop;
+			// Combine parts
+			$currentObjectArray = `polyUnite -ch 0 -name "flatTower1" $flatBase $flatTop`;
+			$towerName = $currentObjectArray[0];
+			return $towerName;
+			break;
+		case 1 :// PeakedTower-----------------------------------------------------------------
+			// Variables
+			int $baseRadius = rand(2,6);
+			// Int $baseHeight = rand(7,15);
+			float $topRadius = $baseRadius + 0.5;
+			int $topHeight = 6;
+			int $roofHeight = rand(3,10);
+			float $roofRadius = $topRadius + 0.5;
+			// Name variables
+			string $currentObjectArray[];
+			clear $currentObjectArray;
+			string $peakedBase;
+			string $peakedTop;
+			string $peakedRoof;
+			string $towerName;
+
+			// Create peaked tower (base, top, and roof)
+			$currentObjectArray = `polyCylinder -ch 0 -r $baseRadius -h $baseHeight -name "peakedBase"`;
+			$peakedBase = $currentObjectArray[0];
+			$currentObjectArray = `polyCylinder -ch 0 -r $topRadius -h $topHeight -name "peakedTop"`;
+			$peakedTop = $currentObjectArray[0];
+			$currentObjectArray = `polyCone -ch 0 -r $roofRadius -h $roofHeight -name "peakedRoof"`;
+			$peakedRoof = $currentObjectArray[0];
+			// Position parts
+			move -y (($baseHeight/2.0) + ($topHeight/2.0)) 0 0 $peakedTop;
+			move -y (($baseHeight/2.0) + ($topHeight) + ($roofHeight/2.0)) 0 0 $peakedRoof;
+			// Combine parts
+			$currentObjectArray = `polyUnite -ch 0 -name "peakedTower1" $peakedBase $peakedTop $peakedRoof`;
+			$towerName = $currentObjectArray[0];
+			// Return the name of the tower
+			return $towerName;
+			break;
+		default:
+			// How did you get here?
+			print "how did you get here?";
+			return "how did you get here?";
+			break;
+		}
+	
+}
+
+////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////
+// Create Castle Wall Script
+
+
+// Prompt the user at the start to input an integer for the height of the wall.
+promptDialog -t "Wall height" -m "Input the height of the wall:" -st"integer";
+
+// NOTE: Before running this script, the user should select a single curve in the scene.
+
+// Get the name of that selected object.
+string $currentObjects[] = `ls -sl`;
+string $curveName = $currentObjects[0];
+clear $currentObjects;
+// Count the number of points in the original curve. 
+int $curvePoints = `getAttr $curveName.spans` + `getAttr $curveName.degree`;
+// Declare an INTEGER variable to store the wall height.
+int $wallHeight = `promptDialog -q`;
+
+
+// Create variables to hold the name of each created tower and the position tho where they are to be moved
+string $currentTower;
+float $coordArray[];
+clear $coordArray;
+string $currentCV;
+string $firstCV = $curveName + ".cv[0]";
+float $firstCoordArray[];
+clear $firstCoordArray;
+$firstCoordArray= `pointPosition -w $firstCV`;
+
+// Loop over that many steps using a 'for()' loop. At each step:
+for($i = 0; $i < $curvePoints; $i++)
+{
+    // Determine the X, Y, and Z coordinates of each point on that curve.
+    $currentCV = $curveName + ".cv[" + $i + "]";
+    $coordArray = `pointPosition -w $currentCV`; //returns x,y,z
+
+	if ($i != 0 && floor($firstCoordArray[0] + 0.5 ) == floor($coordArray[0]+ 0.5 ) && floor($firstCoordArray[2]+ 0.5 ) == floor($coordArray[2]+ 0.5 ))
+	{
+		print("skipped point #" + $i + ".\n");
+		continue;
+	} 	
+	
+    // Call 'makeTower' procedure
+    // Give it the height specified by the user in step 1,
+    $currentTower = makeTower($wallHeight);
+
+    // Move the new tower into position, so its base is centered on the curve point.
+    move $coordArray[0] ($wallHeight/2) $coordArray[2]  $currentTower;
+}
+
+
+// Get the length of the wall
+int $wallLength = `arclen -ch 0 $curveName`;
+
+// REBUILD the curve.
+$currentObjects = `rebuildCurve -ch 0 -d 1 -rpo 0 -s $wallLength $curveName`; 
+string $rebuiltCurveName = $currentObjects[0];
+clear $currentObjects;
+
+// Create the Wall
+// Extrude the rebuilt curve using the 'extrude' command and the following settings:
+// degree 1, extrude type 0. Also, the direction to extrude should be straight up, and the 
+// extrude length should be 0.5 LESS than the wall height variable.
+
+$currentObjects = `extrude -ch 0 -dl 1 -et 0 -dx 0 -dy 1 -dz 0 -l ($wallHeight - 0.5) $rebuiltCurveName`;
+
+string $extrudedWall = $currentObjects[0];
+clear $currentObjects;
+
+// The extruded wall will be a NURBS surface. Convert it to poly using the 'nurbsToPoly'
+// command, using the 'format' flag, setting the argument to 3. This will produce the correct
+// type of extrusion. Use the 'name' flag to give the new poly geometry an appropriate name.
+
+string $polyWall = $extrudedWall+"poly";
+
+nurbsToPoly -ch 0 -f 3 -n $polyWall $extrudedWall;
+
+// Now you have a poly wall. Use the 'polyExtrudeFacet' command on the entire object to give
+// it thickness. Choose an appropriate value for the thickness.
+
+polyExtrudeFacet -ch 0 -tk 1.5 /*-lt 2 0 2*/ $polyWall;
+
+// Part 3: Create the ramparts. (3 marks)
+
+// Use a 'for' loop to select every second face along the top of the wall (the tops of castle
+// walls are called 'ramparts'). See SLATE for hints on how to set up this loop.
+
+//get number of faces in polyWall
+int $arrayInts[] = `polyEvaluate -f $polyWall`; 
+int $wallFaces = $arrayInts[0]; 
+//declare and fill string variable for selecting faces
+string $polyWallFace = $polyWall;
+//clear selection
+select -cl;
+// select faces using created variable
+for ($i = ($wallFaces/2); $i < $wallFaces-1; $i+=4) {
+	$polyWallFace = $polyWall + ".f[" + $i + "]";
+	select -add $polyWallFace;
+}
+
+// Extrude these selected rampart faces.
+
+polyExtrudeFacet -ch 0 -thickness 0.5;
+
+// Clear selection.
+
+select -cl;
+
+// Harden all edges of the wall.
+
+polySoftEdge -ch 0 -a 55 $polyWall;
+    
+// Delete superfluous geo: the rebuilt curve and the extruded NURBS surface.
+delete $rebuiltCurveName $extrudedWall;
